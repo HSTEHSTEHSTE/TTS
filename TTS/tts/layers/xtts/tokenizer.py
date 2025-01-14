@@ -645,12 +645,16 @@ class VoiceBpeTokenizer:
 
     def encode(self, txt, lang):
         lang = lang.split("-")[0]  # remove the region
-        self.check_input_length(txt, lang)
-        txt = self.preprocess_text(txt, lang)
+        self.check_input_length(txt, 'en')
+        # self.check_input_length(txt, lang)
+        txt = self.preprocess_text(txt, 'en')
+        print(lang, txt)
+        # txt = self.preprocess_text(txt, lang)
         lang = "zh-cn" if lang == "zh" else lang
         txt = f"[{lang}]{txt}"
         txt = txt.replace(" ", "[SPACE]")
-        return self.tokenizer.encode(txt).ids
+        out = self.tokenizer.encode(txt)
+        return out.ids
 
     def decode(self, seq):
         if isinstance(seq, torch.Tensor):
