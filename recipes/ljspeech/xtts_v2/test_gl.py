@@ -5,10 +5,15 @@ from trainer import Trainer, TrainerArgs
 from TTS.config.shared_configs import BaseDatasetConfig
 from TTS.tts.datasets import load_tts_samples
 from TTS.tts.layers.xtts.trainer.gpt_trainer import GPTArgs, GPTTrainer, GPTTrainerConfig, XttsAudioConfig
+from TTS.tts.layers.xtts.dvae import DiscreteVAE
 from TTS.utils.manage import ModelManager
+from TTS.tts.configs.xtts_config import XttsConfig
+from TTS.tts.models.xtts import Xtts
+
+import torch, torchaudio, librosa
 
 # Logging parameters
-RUN_NAME = "GPT_XTTS_v2.0_CV_FT_5e-5_Southern_Africa"
+RUN_NAME = "GPT_XTTS_v2.0_CV_FT_1e-5"
 PROJECT_NAME = "XTTS_trainer"
 DASHBOARD_LOGGER = "wandb"
 LOGGER_URI = None
@@ -28,7 +33,7 @@ config_dataset = BaseDatasetConfig(
     formatter = "commonvoice_accents",
     dataset_name = "commonvoice",
     path = '/home/hltcoe/xli/ARTS/TTS/corpora/commonvoice',
-    meta_file_train="/home/hltcoe/xli/ARTS/TTS/corpora/accent_filelist/cv-train-southern_africa.csv",
+    meta_file_train="/home/hltcoe/xli/ARTS/TTS/corpora/accent_filelist/cv-train.csv",
     language="en",
 )
 
@@ -36,8 +41,8 @@ config_dataset = BaseDatasetConfig(
 DATASETS_CONFIG_LIST = [config_dataset]
 
 # Define the path where XTTS v2.0.1 files will be downloaded
-CHECKPOINTS_OUT_PATH = os.path.join(OUT_PATH, "XTTS_v2.0_original_model_files/")
-# CHECKPOINTS_OUT_PATH = '/home/hltcoe/xli/ARTS/TTS/recipes/ljspeech/xtts_v2/exp/GPT_XTTS_v2.0_CV_FT_5e-5-January-24-2025_08+47AM-744fa48'
+# CHECKPOINTS_OUT_PATH = os.path.join(OUT_PATH, "XTTS_v2.0_original_model_files/")
+CHECKPOINTS_OUT_PATH = '/home/hltcoe/xli/ARTS/TTS/recipes/ljspeech/xtts_v2/exp/GPT_XTTS_v2.0_CV_FT_1e-5-January-26-2025_08+22PM-744fa48'
 MODEL_DOWNLOAD_PATH = os.path.join(OUT_PATH, "XTTS_v2.0_original_model_files/")
 os.makedirs(CHECKPOINTS_OUT_PATH, exist_ok=True)
 
@@ -50,11 +55,6 @@ MEL_NORM_LINK = "https://coqui.gateway.scarf.sh/hf-coqui/XTTS-v2/main/mel_stats.
 DVAE_CHECKPOINT = os.path.join(MODEL_DOWNLOAD_PATH, os.path.basename(DVAE_CHECKPOINT_LINK))
 MEL_NORM_FILE = os.path.join(MODEL_DOWNLOAD_PATH, os.path.basename(MEL_NORM_LINK))
 
-# download DVAE files if needed
-if not os.path.isfile(DVAE_CHECKPOINT) or not os.path.isfile(MEL_NORM_FILE):
-    print(" > Downloading DVAE files!")
-    ModelManager._download_model_files([MEL_NORM_LINK, DVAE_CHECKPOINT_LINK], CHECKPOINTS_OUT_PATH, progress_bar=True)
-
 
 # Download XTTS v2.0 checkpoint if needed
 TOKENIZER_FILE_LINK = "https://coqui.gateway.scarf.sh/hf-coqui/XTTS-v2/main/vocab.json"
@@ -62,15 +62,8 @@ XTTS_CHECKPOINT_LINK = "https://coqui.gateway.scarf.sh/hf-coqui/XTTS-v2/main/mod
 
 # XTTS transfer learning parameters: You we need to provide the paths of XTTS model checkpoint that you want to do the fine tuning.
 TOKENIZER_FILE = os.path.join(MODEL_DOWNLOAD_PATH, os.path.basename(TOKENIZER_FILE_LINK))  # vocab.json file
-XTTS_CHECKPOINT = os.path.join(CHECKPOINTS_OUT_PATH, os.path.basename(XTTS_CHECKPOINT_LINK))  # model.pth file
-# XTTS_CHECKPOINT = os.path.join(CHECKPOINTS_OUT_PATH, 'checkpoint_20000.pth')
-
-# download XTTS v2.0 files if needed
-if not os.path.isfile(TOKENIZER_FILE) or not os.path.isfile(XTTS_CHECKPOINT):
-    print(" > Downloading XTTS v2.0 files!")
-    ModelManager._download_model_files(
-        [TOKENIZER_FILE_LINK, XTTS_CHECKPOINT_LINK], CHECKPOINTS_OUT_PATH, progress_bar=True
-    )
+# XTTS_CHECKPOINT = os.path.join(CHECKPOINTS_OUT_PATH, os.path.basename(XTTS_CHECKPOINT_LINK))  # model.pth file
+XTTS_CHECKPOINT = os.path.join(CHECKPOINTS_OUT_PATH, 'checkpoint_140000.pth')
 
 
 # Training sentences generations
@@ -101,7 +94,7 @@ def main():
     # define audio config
     audio_config = XttsAudioConfig(sample_rate=22050, dvae_sample_rate=22050, output_sample_rate=24000)
     # training parameters config
-    config = GPTTrainerConfig(
+    config = XttsConfig(
         output_path=OUT_PATH,
         model_args=model_args,
         run_name=RUN_NAME,
@@ -117,7 +110,7 @@ def main():
         eval_batch_size=BATCH_SIZE,
         num_loader_workers=8,
         eval_split_max_size=256,
-        run_eval_steps=10000,
+        run_eval_steps=2000,
         print_step=50,
         plot_step=100,
         log_model_step=1000,
@@ -128,9 +121,8 @@ def main():
         print_eval=False,
         # Optimizer values like tortoise, pytorch implementation with modifications to not apply WD to non-weight parameters.
         optimizer="AdamW",
-        optimizer_wd_only_on_weights=OPTIMIZER_WD_ONLY_ON_WEIGHTS,
         optimizer_params={"betas": [0.9, 0.96], "eps": 1e-8, "weight_decay": 1e-2},
-        lr=5e-5,  # learning rate
+        lr=1e-5,  # learning rate
         lr_scheduler="MultiStepLR",
         # it was adjusted accordly for the new step scheme
         lr_scheduler_params={"milestones": [50000 * 18, 150000 * 18, 300000 * 18], "gamma": 0.5, "last_epoch": -1},
@@ -169,32 +161,41 @@ def main():
     )
 
     # init the model from config
-    model = GPTTrainer.init_from_config(config)
-
-    # load training samples
-    train_samples, eval_samples = load_tts_samples(
-        DATASETS_CONFIG_LIST,
-        eval_split=True,
-        eval_split_max_size=config.eval_split_max_size,
-        eval_split_size=config.eval_split_size,
-    )
-
-    # init the trainer and 🚀
-    trainer = Trainer(
-        TrainerArgs(
-            restore_path=None,  # xtts checkpoint is restored via xtts_checkpoint key so no need of restore it using Trainer restore_path parameter
-            skip_train_epoch=False,
-            start_with_eval=START_WITH_EVAL,
-            grad_accum_steps=GRAD_ACUMM_STEPS,
-        ),
-        config,
-        output_path=OUT_PATH,
-        model=model,
-        train_samples=train_samples,
-        eval_samples=eval_samples,
-    )
-    trainer.fit()
-
+    model = Xtts.init_from_config(config)
+    model.load_checkpoint(config, checkpoint_dir="/home/hltcoe/xli/ARTS/TTS/tts_models/accent_finetune/5e-5", eval=True)
+    model.cuda()
+    dvae = DiscreteVAE(
+            channels=80,
+            normalization=None,
+            positional_dims=1,
+            num_tokens=1024,
+            codebook_dim=512,
+            hidden_dim=512,
+            num_resnet_blocks=3,
+            kernel_size=3,
+            num_layers=2,
+            use_transposed_convs=False,
+        )
+    dvae.eval()
+    dvae_checkpoint = torch.load('/home/hltcoe/xli/ARTS/TTS/recipes/ljspeech/xtts_v2/exp/XTTS_v2.0_original_model_files/dvae.pth')
+    dvae.load_state_dict(dvae_checkpoint, strict=False)
+    dvae.cuda()
+    output = model.synthesize(text = "This cake is great. It's so delicious and moist.",
+                speaker_wav = SPEAKER_REFERENCE,
+                language = LANGUAGE,
+                accents = 'Germany',
+                config = config)
+    tokens = output['gpt_tokens']
+    mel = dvae.decode(tokens[:, :-1])[0].cpu().detach()
+    mel_norm = torch.load(MEL_NORM_FILE)
+    inverse_mel_recon = mel * mel_norm.unsqueeze(0).unsqueeze(-1) # mel_norm is given for acoustic feature extraction, you will have it from the xtts repo
+    inverse_mel_recon = torch.exp(inverse_mel_recon)
+    n_stft = int((1024//2) + 1)
+    inverse_mel_recon = torchaudio.transforms.InverseMelScale(n_stft=n_stft, n_mels=80, sample_rate=22050, f_min=0, f_max=8000, norm="slaney")(inverse_mel_recon) # 1, 1024, T
+    inverse_mel_recon = inverse_mel_recon.detach().cpu()
+    gl = torchaudio.transforms.GriffinLim(n_fft = 1024, n_iter = 64, hop_length = 256, win_length = 1024)
+    wav = gl(inverse_mel_recon)
+    torchaudio.save('/home/hltcoe/xli/ARTS/temp/test.wav', wav, 22050)
 
 if __name__ == "__main__":
     main()

@@ -612,6 +612,15 @@ class VoiceBpeTokenizer:
             "hu": 224,
             "ko": 95,
         }
+        self.accents_to_langcode = {
+            "US": "en",
+            "England": "es",
+            "India": "fr",
+            "Germany": "de",
+            "Canada": "it",
+            "Australia": "pt",
+            "Southern Africa": "pl",
+        }
 
     @cached_property
     def katsu(self):
@@ -643,7 +652,7 @@ class VoiceBpeTokenizer:
             raise NotImplementedError(f"Language '{lang}' is not supported.")
         return txt
 
-    def encode(self, txt, lang):
+    def encode(self, txt, lang, accents = None):
         lang = lang.split("-")[0]  # remove the region
         self.check_input_length(txt, 'en')
         # self.check_input_length(txt, lang)
@@ -651,7 +660,11 @@ class VoiceBpeTokenizer:
         print(lang, txt)
         # txt = self.preprocess_text(txt, lang)
         lang = "zh-cn" if lang == "zh" else lang
-        txt = f"[{lang}]{txt}"
+        if not accents is None:
+            accents = "zh-cn" if lang == "zh" else accents
+            txt = '[' + self.accents_to_langcode[accents] + '] ' + txt
+        else:
+            txt = f"[{lang}]{txt}"
         txt = txt.replace(" ", "[SPACE]")
         out = self.tokenizer.encode(txt)
         return out.ids
