@@ -621,6 +621,15 @@ class VoiceBpeTokenizer:
             "Australia": "pt",
             "Southern Africa": "pl",
         }
+        self.accents_cipher_index = {
+            "US": 0,
+            "England": 1,
+            "India": 2,
+            "Germany": 3,
+            "Canada": 4,
+            "Australia": 5,
+            "Southern Africa": 6,
+        }
 
     @cached_property
     def katsu(self):
@@ -636,7 +645,7 @@ class VoiceBpeTokenizer:
                 f"[!] Warning: The text length exceeds the character limit of {limit} for language '{lang}', this might cause truncated audio."
             )
 
-    def preprocess_text(self, txt, lang):
+    def preprocess_text(self, txt, lang, accents = None):
         if lang in {"ar", "cs", "de", "en", "es", "fr", "hu", "it", "nl", "pl", "pt", "ru", "tr", "zh", "ko"}:
             txt = multilingual_cleaners(txt, lang)
             if lang == "zh":
@@ -656,8 +665,8 @@ class VoiceBpeTokenizer:
         lang = lang.split("-")[0]  # remove the region
         self.check_input_length(txt, 'en')
         # self.check_input_length(txt, lang)
-        txt = self.preprocess_text(txt, 'en')
-        print(lang, txt)
+        txt = self.preprocess_text(txt, 'en', accents)
+        # print(lang, txt)
         # txt = self.preprocess_text(txt, lang)
         lang = "zh-cn" if lang == "zh" else lang
         if not accents is None:

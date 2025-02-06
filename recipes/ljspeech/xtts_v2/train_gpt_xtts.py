@@ -8,7 +8,7 @@ from TTS.tts.layers.xtts.trainer.gpt_trainer import GPTArgs, GPTTrainer, GPTTrai
 from TTS.utils.manage import ModelManager
 
 # Logging parameters
-RUN_NAME = "GPT_XTTS_v2.0_CV_FT_5e-5_Southern_Africa"
+RUN_NAME = "GPT_XTTS_v2.0_CV_FT_1e-5_f"
 PROJECT_NAME = "XTTS_trainer"
 DASHBOARD_LOGGER = "wandb"
 LOGGER_URI = None
@@ -28,7 +28,7 @@ config_dataset = BaseDatasetConfig(
     formatter = "commonvoice_accents",
     dataset_name = "commonvoice",
     path = '/home/hltcoe/xli/ARTS/TTS/corpora/commonvoice',
-    meta_file_train="/home/hltcoe/xli/ARTS/TTS/corpora/accent_filelist/cv-train-southern_africa.csv",
+    meta_file_train="/home/hltcoe/xli/ARTS/TTS/corpora/accent_filelist/cv-train-unfiltered.csv",
     language="en",
 )
 
@@ -36,8 +36,9 @@ config_dataset = BaseDatasetConfig(
 DATASETS_CONFIG_LIST = [config_dataset]
 
 # Define the path where XTTS v2.0.1 files will be downloaded
-CHECKPOINTS_OUT_PATH = os.path.join(OUT_PATH, "XTTS_v2.0_original_model_files/")
-# CHECKPOINTS_OUT_PATH = '/home/hltcoe/xli/ARTS/TTS/recipes/ljspeech/xtts_v2/exp/GPT_XTTS_v2.0_CV_FT_5e-5-January-24-2025_08+47AM-744fa48'
+# CHECKPOINTS_OUT_PATH = os.path.join(OUT_PATH, "XTTS_v2.0_original_model_files/")
+CHECKPOINTS_OUT_PATH = os.path.join(OUT_PATH, "XTTS_orig_new/")
+# CHECKPOINTS_OUT_PATH = '/home/hltcoe/xli/ARTS/TTS/recipes/ljspeech/xtts_v2/exp/GPT_XTTS_v2.0_CV_FT_1e-5_ui-January-31-2025_01+20PM-72fd235'
 MODEL_DOWNLOAD_PATH = os.path.join(OUT_PATH, "XTTS_v2.0_original_model_files/")
 os.makedirs(CHECKPOINTS_OUT_PATH, exist_ok=True)
 
@@ -63,7 +64,7 @@ XTTS_CHECKPOINT_LINK = "https://coqui.gateway.scarf.sh/hf-coqui/XTTS-v2/main/mod
 # XTTS transfer learning parameters: You we need to provide the paths of XTTS model checkpoint that you want to do the fine tuning.
 TOKENIZER_FILE = os.path.join(MODEL_DOWNLOAD_PATH, os.path.basename(TOKENIZER_FILE_LINK))  # vocab.json file
 XTTS_CHECKPOINT = os.path.join(CHECKPOINTS_OUT_PATH, os.path.basename(XTTS_CHECKPOINT_LINK))  # model.pth file
-# XTTS_CHECKPOINT = os.path.join(CHECKPOINTS_OUT_PATH, 'checkpoint_20000.pth')
+# XTTS_CHECKPOINT = os.path.join(CHECKPOINTS_OUT_PATH, 'best_model.pth')
 
 # download XTTS v2.0 files if needed
 if not os.path.isfile(TOKENIZER_FILE) or not os.path.isfile(XTTS_CHECKPOINT):
@@ -130,7 +131,7 @@ def main():
         optimizer="AdamW",
         optimizer_wd_only_on_weights=OPTIMIZER_WD_ONLY_ON_WEIGHTS,
         optimizer_params={"betas": [0.9, 0.96], "eps": 1e-8, "weight_decay": 1e-2},
-        lr=5e-5,  # learning rate
+        lr=1e-5,  # learning rate
         lr_scheduler="MultiStepLR",
         # it was adjusted accordly for the new step scheme
         lr_scheduler_params={"milestones": [50000 * 18, 150000 * 18, 300000 * 18], "gamma": 0.5, "last_epoch": -1},
@@ -141,6 +142,12 @@ def main():
                 "language": LANGUAGE,
                 "accents": 'England'
             },
+            # {
+            #     "text": "It took me quite a long time to develop a voice, and now that I have it I'm not going to be silent.",
+            #     "speaker_wav": SPEAKER_REFERENCE,
+            #     "language": LANGUAGE,
+            #     "accents": 'US'
+            # },
             {
                 "text": "This cake is great. It's so delicious and moist.",
                 "speaker_wav": SPEAKER_REFERENCE,
@@ -153,6 +160,12 @@ def main():
                 "language": LANGUAGE,
                 "accents": 'US'
             },
+            # {
+            #     "text": "Two peanuts were walking down the road. One was assaulted. Peanut.",
+            #     "speaker_wav": SPEAKER_REFERENCE,
+            #     "language": LANGUAGE,
+            #     "accents": 'India'
+            # },
             {
                 "text": "Two peanuts were walking down the road. One was assaulted. Peanut.",
                 "speaker_wav": SPEAKER_REFERENCE,

@@ -163,6 +163,7 @@ def main():
     # init the model from config
     model = Xtts.init_from_config(config)
     model.load_checkpoint(config, checkpoint_dir="/home/hltcoe/xli/ARTS/TTS/tts_models/accent_finetune/5e-5", eval=True)
+    breakpoint()
     model.cuda()
     dvae = DiscreteVAE(
             channels=80,
