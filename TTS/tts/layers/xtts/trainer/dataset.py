@@ -70,8 +70,8 @@ class XTTSDataset(torch.utils.data.Dataset):
             # random.shuffle(self.samples)
             random.shuffle(self.samples)
             # order by language
-            self.samples = key_samples_by_col(self.samples, "language")
-            print(" > Sampling by language:", self.samples.keys())
+            self.samples = key_samples_by_col(self.samples, "accents")
+            print(" > Sampling by accents:", self.samples.keys())
         else:
             # for evaluation load and check samples that are corrupted to ensures the reproducibility
             self.check_eval_samples()

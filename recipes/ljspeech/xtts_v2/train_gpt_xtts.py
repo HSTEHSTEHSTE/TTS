@@ -8,7 +8,7 @@ from TTS.tts.layers.xtts.trainer.gpt_trainer import GPTArgs, GPTTrainer, GPTTrai
 from TTS.utils.manage import ModelManager
 
 # Logging parameters
-RUN_NAME = "GPT_XTTS_v2.0_CV_FT_1e-5_f"
+RUN_NAME = "GPT_XTTS_v2.0_CV_FT_1e-5_ul"
 PROJECT_NAME = "XTTS_trainer"
 DASHBOARD_LOGGER = "wandb"
 LOGGER_URI = None
@@ -36,9 +36,9 @@ config_dataset = BaseDatasetConfig(
 DATASETS_CONFIG_LIST = [config_dataset]
 
 # Define the path where XTTS v2.0.1 files will be downloaded
-# CHECKPOINTS_OUT_PATH = os.path.join(OUT_PATH, "XTTS_v2.0_original_model_files/")
-CHECKPOINTS_OUT_PATH = os.path.join(OUT_PATH, "XTTS_orig_new/")
-# CHECKPOINTS_OUT_PATH = '/home/hltcoe/xli/ARTS/TTS/recipes/ljspeech/xtts_v2/exp/GPT_XTTS_v2.0_CV_FT_1e-5_ui-January-31-2025_01+20PM-72fd235'
+CHECKPOINTS_OUT_PATH = os.path.join(OUT_PATH, "XTTS_v2.0_original_model_files/")
+# CHECKPOINTS_OUT_PATH = os.path.join(OUT_PATH, "XTTS_orig_new/")
+# CHECKPOINTS_OUT_PATH = '/home/hltcoe/xli/ARTS/TTS/recipes/ljspeech/xtts_v2/exp/GPT_XTTS_v2.0_CV_FT_1e-5_ul-March-01-2025_04+09PM-0ebc1b9'
 MODEL_DOWNLOAD_PATH = os.path.join(OUT_PATH, "XTTS_v2.0_original_model_files/")
 os.makedirs(CHECKPOINTS_OUT_PATH, exist_ok=True)
 
@@ -64,7 +64,7 @@ XTTS_CHECKPOINT_LINK = "https://coqui.gateway.scarf.sh/hf-coqui/XTTS-v2/main/mod
 # XTTS transfer learning parameters: You we need to provide the paths of XTTS model checkpoint that you want to do the fine tuning.
 TOKENIZER_FILE = os.path.join(MODEL_DOWNLOAD_PATH, os.path.basename(TOKENIZER_FILE_LINK))  # vocab.json file
 XTTS_CHECKPOINT = os.path.join(CHECKPOINTS_OUT_PATH, os.path.basename(XTTS_CHECKPOINT_LINK))  # model.pth file
-# XTTS_CHECKPOINT = os.path.join(CHECKPOINTS_OUT_PATH, 'best_model.pth')
+# XTTS_CHECKPOINT = os.path.join(CHECKPOINTS_OUT_PATH, 'checkpoint_500000.pth')
 
 # download XTTS v2.0 files if needed
 if not os.path.isfile(TOKENIZER_FILE) or not os.path.isfile(XTTS_CHECKPOINT):
@@ -122,8 +122,8 @@ def main():
         print_step=50,
         plot_step=100,
         log_model_step=1000,
-        save_step=10000,
-        save_n_checkpoints=1,
+        save_step=100000,
+        save_n_checkpoints=100,
         save_checkpoints=True,
         # target_loss="loss",
         print_eval=False,
