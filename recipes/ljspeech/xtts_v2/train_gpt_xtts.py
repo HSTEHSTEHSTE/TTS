@@ -64,7 +64,7 @@ XTTS_CHECKPOINT_LINK = "https://coqui.gateway.scarf.sh/hf-coqui/XTTS-v2/main/mod
 # XTTS transfer learning parameters: You we need to provide the paths of XTTS model checkpoint that you want to do the fine tuning.
 TOKENIZER_FILE = os.path.join(MODEL_DOWNLOAD_PATH, os.path.basename(TOKENIZER_FILE_LINK))  # vocab.json file
 XTTS_CHECKPOINT = os.path.join(CHECKPOINTS_OUT_PATH, os.path.basename(XTTS_CHECKPOINT_LINK))  # model.pth file
-# XTTS_CHECKPOINT = os.path.join(CHECKPOINTS_OUT_PATH, 'checkpoint_500000.pth')
+XTTS_CHECKPOINT = os.path.join('/home/hltcoe/xli/ARTS/TTS/recipes/ljspeech/xtts_v2/exp/GPT_XTTS_v2.0_CV_FT_1e-5_unlabeled-April-18-2025_05+33PM-8479e82/checkpoint_100000.pth')
 
 # download XTTS v2.0 files if needed
 if not os.path.isfile(TOKENIZER_FILE) or not os.path.isfile(XTTS_CHECKPOINT):
@@ -82,6 +82,30 @@ SPEAKER_REFERENCE = [
     "/home/hltcoe/xli/ARTS/anon_baseline/data/LibriSpeech/dev-clean/251/118436/251-118436-0002.flac"
 ]
 LANGUAGE = config_dataset.language
+
+
+class CustomTrainer(Trainer):
+    def __init__(
+        self,
+        args,
+        config,
+        output_path,
+        model,
+        train_samples,
+        eval_samples,
+    ):
+        super().__init__(
+            args, 
+            config,
+            output_path,
+            model = model,
+            train_samples = train_samples,
+            eval_samples = eval_samples
+        )
+
+    def eval_epoch(self):
+        super().test_run()
+        super().eval_epoch()
 
 
 def main():
@@ -121,11 +145,11 @@ def main():
         eval_batch_size=BATCH_SIZE,
         num_loader_workers=8,
         eval_split_max_size=256,
-        run_eval_steps=10000,
+        run_eval_steps=100,
         print_step=50,
         plot_step=100,
         log_model_step=1000,
-        save_step=100000,
+        save_step=50000,
         save_n_checkpoints=100,
         save_checkpoints=True,
         # target_loss="loss",
@@ -196,7 +220,7 @@ def main():
     )
 
     # init the trainer and 🚀
-    trainer = Trainer(
+    trainer = CustomTrainer(
         TrainerArgs(
             restore_path=None,  # xtts checkpoint is restored via xtts_checkpoint key so no need of restore it using Trainer restore_path parameter
             skip_train_epoch=False,
