@@ -8,7 +8,7 @@ from TTS.tts.layers.xtts.trainer.gpt_trainer import GPTArgs, GPTTrainer, GPTTrai
 from TTS.utils.manage import ModelManager
 
 # Logging parameters
-RUN_NAME = "GPT_XTTS_v2.0_CV_FT_1e-5_ul"
+RUN_NAME = "GPT_XTTS_v2.0_CV_FT_1e-5_unlabeled"
 PROJECT_NAME = "XTTS_trainer"
 DASHBOARD_LOGGER = "wandb"
 LOGGER_URI = None
@@ -28,8 +28,8 @@ config_dataset = BaseDatasetConfig(
     formatter = "commonvoice_accents",
     dataset_name = "commonvoice",
     path = '/home/hltcoe/xli/ARTS/TTS/corpora/commonvoice',
-    meta_file_train="/home/hltcoe/xli/ARTS/TTS/corpora/accent_filelist/cv-train-unfiltered.csv",
-    language="en",
+    meta_file_train="/home/hltcoe/xli/ARTS/TTS/corpora/accent_filelist/cv-train-unlabeled.csv",
+    language = "en",
 )
 
 # Add here the configs of the datasets
@@ -76,7 +76,10 @@ if not os.path.isfile(TOKENIZER_FILE) or not os.path.isfile(XTTS_CHECKPOINT):
 
 # Training sentences generations
 SPEAKER_REFERENCE = [
-    "/home/hltcoe/xli/ARTS/Recording.wav"  # speaker reference to be used in training test sentences
+    "/home/hltcoe/xli/ARTS/Recording.wav",
+    "/home/hltcoe/xli/ARTS/anon_baseline/data/LibriSpeech/dev-clean/84/121123/84-121123-0002.flac",
+    "/home/hltcoe/xli/ARTS/Voice-Privacy-Challenge-2024/corpora/voxceleb/voxceleb2/dev/wav/id09185/_cDhsiYaV3c/00111.wav",
+    "/home/hltcoe/xli/ARTS/anon_baseline/data/LibriSpeech/dev-clean/251/118436/251-118436-0002.flac"
 ]
 LANGUAGE = config_dataset.language
 
@@ -138,43 +141,43 @@ def main():
         test_sentences=[
             {
                 "text": "It took me quite a long time to develop a voice, and now that I have it I'm not going to be silent.",
-                "speaker_wav": SPEAKER_REFERENCE,
+                "speaker_wav": SPEAKER_REFERENCE[0],
                 "language": LANGUAGE,
                 "accents": 'England'
             },
-            # {
-            #     "text": "It took me quite a long time to develop a voice, and now that I have it I'm not going to be silent.",
-            #     "speaker_wav": SPEAKER_REFERENCE,
-            #     "language": LANGUAGE,
-            #     "accents": 'US'
-            # },
+            {
+                "text": "It took me quite a long time to develop a voice, and now that I have it I'm not going to be silent.",
+                "speaker_wav": SPEAKER_REFERENCE[1],
+                "language": LANGUAGE,
+                "accents": 'US'
+            },
             {
                 "text": "This cake is great. It's so delicious and moist.",
-                "speaker_wav": SPEAKER_REFERENCE,
+                "speaker_wav": SPEAKER_REFERENCE[2],
                 "language": LANGUAGE,
                 "accents": 'India'
             },
             {
                 "text": "What is the most resilient parasite?",
-                "speaker_wav": SPEAKER_REFERENCE,
+                "speaker_wav": SPEAKER_REFERENCE[3],
                 "language": LANGUAGE,
                 "accents": 'US'
             },
-            # {
-            #     "text": "Two peanuts were walking down the road. One was assaulted. Peanut.",
-            #     "speaker_wav": SPEAKER_REFERENCE,
-            #     "language": LANGUAGE,
-            #     "accents": 'India'
-            # },
             {
                 "text": "Two peanuts were walking down the road. One was assaulted. Peanut.",
-                "speaker_wav": SPEAKER_REFERENCE,
+                "speaker_wav": SPEAKER_REFERENCE[0],
+                "language": LANGUAGE,
+                "accents": 'India'
+            },
+            {
+                "text": "Two peanuts were walking down the road. One was assaulted. Peanut.",
+                "speaker_wav": SPEAKER_REFERENCE[1],
                 "language": LANGUAGE,
                 "accents": 'Germany'
             },
             {
                 "text": "What is the airspeed velocity of an unladen swallow?",
-                "speaker_wav": SPEAKER_REFERENCE,
+                "speaker_wav": SPEAKER_REFERENCE[2],
                 "language": LANGUAGE,
                 "accents": 'Southern Africa'
             },
@@ -187,9 +190,9 @@ def main():
     # load training samples
     train_samples, eval_samples = load_tts_samples(
         DATASETS_CONFIG_LIST,
-        eval_split=True,
-        eval_split_max_size=config.eval_split_max_size,
-        eval_split_size=config.eval_split_size,
+        eval_split = True,
+        eval_split_max_size = config.eval_split_max_size,
+        eval_split_size = config.eval_split_size,
     )
 
     # init the trainer and 🚀
