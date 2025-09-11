@@ -782,7 +782,7 @@ class Xtts(BaseTTS):
         except:
             if eval:
                 self.gpt.init_gpt_for_inference(kv_cache=self.args.kv_cache)
-            self.load_state_dict(checkpoint, strict=strict)
+            self.load_state_dict(checkpoint, strict=False)
 
         if eval:
             self.hifigan_decoder.eval()

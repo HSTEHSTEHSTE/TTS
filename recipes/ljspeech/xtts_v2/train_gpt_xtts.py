@@ -8,7 +8,7 @@ from TTS.tts.layers.xtts.trainer.gpt_trainer import GPTArgs, GPTTrainer, GPTTrai
 from TTS.utils.manage import ModelManager
 
 # Logging parameters
-RUN_NAME = "GPT_XTTS_v2.0_CV_FT_1e-5_unlabeled"
+RUN_NAME = "GPT_XTTS_v2.0_CV_FT_1e-5_mixed_full_noaug"
 PROJECT_NAME = "XTTS_trainer"
 DASHBOARD_LOGGER = "wandb"
 LOGGER_URI = None
@@ -23,14 +23,16 @@ BATCH_SIZE = 3  # set here the batch size
 GRAD_ACUMM_STEPS = 84  # set here the grad accumulation steps
 # Note: we recommend that BATCH_SIZE * GRAD_ACUMM_STEPS need to be at least 252 for more efficient training. You can increase/decrease BATCH_SIZE but then set GRAD_ACUMM_STEPS accordingly.
 
+meta_file_train = "/home/hltcoe/xli/ARTS/geolocation/icefall/egs/radio/geolocation/corpora/accent_filelist/cv-train-mixed.csv"
 # Define here the dataset that you want to use for the fine-tuning on.
 config_dataset = BaseDatasetConfig(
     formatter = "commonvoice_accents",
     dataset_name = "commonvoice",
     path = '/home/hltcoe/xli/ARTS/TTS/corpora/commonvoice',
-    meta_file_train="/home/hltcoe/xli/ARTS/TTS/corpora/accent_filelist/cv-train-unlabeled.csv",
+    meta_file_train = meta_file_train,
     language = "en",
 )
+print(meta_file_train)
 
 # Add here the configs of the datasets
 DATASETS_CONFIG_LIST = [config_dataset]
@@ -64,7 +66,7 @@ XTTS_CHECKPOINT_LINK = "https://coqui.gateway.scarf.sh/hf-coqui/XTTS-v2/main/mod
 # XTTS transfer learning parameters: You we need to provide the paths of XTTS model checkpoint that you want to do the fine tuning.
 TOKENIZER_FILE = os.path.join(MODEL_DOWNLOAD_PATH, os.path.basename(TOKENIZER_FILE_LINK))  # vocab.json file
 XTTS_CHECKPOINT = os.path.join(CHECKPOINTS_OUT_PATH, os.path.basename(XTTS_CHECKPOINT_LINK))  # model.pth file
-XTTS_CHECKPOINT = os.path.join('/home/hltcoe/xli/ARTS/TTS/recipes/ljspeech/xtts_v2/exp/GPT_XTTS_v2.0_CV_FT_1e-5_unlabeled-April-18-2025_05+33PM-8479e82/checkpoint_100000.pth')
+# XTTS_CHECKPOINT = os.path.join('/home/hltcoe/xli/ARTS/TTS/recipes/ljspeech/xtts_v2/exp/GPT_XTTS_v2.0_CV_FT_1e-5_mixed_full-May-04-2025_03+11PM-e355c13/checkpoint_150000.pth') # load checkpoint
 
 # download XTTS v2.0 files if needed
 if not os.path.isfile(TOKENIZER_FILE) or not os.path.isfile(XTTS_CHECKPOINT):
@@ -145,7 +147,7 @@ def main():
         eval_batch_size=BATCH_SIZE,
         num_loader_workers=8,
         eval_split_max_size=256,
-        run_eval_steps=100,
+        run_eval_steps=10000,
         print_step=50,
         plot_step=100,
         log_model_step=1000,
@@ -163,47 +165,95 @@ def main():
         # it was adjusted accordly for the new step scheme
         lr_scheduler_params={"milestones": [50000 * 18, 150000 * 18, 300000 * 18], "gamma": 0.5, "last_epoch": -1},
         test_sentences=[
-            {
+            {#0
                 "text": "It took me quite a long time to develop a voice, and now that I have it I'm not going to be silent.",
                 "speaker_wav": SPEAKER_REFERENCE[0],
                 "language": LANGUAGE,
                 "accents": 'England'
             },
-            {
+            {#1
                 "text": "It took me quite a long time to develop a voice, and now that I have it I'm not going to be silent.",
                 "speaker_wav": SPEAKER_REFERENCE[1],
                 "language": LANGUAGE,
                 "accents": 'US'
             },
-            {
+            {#2
+                "text": "It took me quite a long time to develop a voice, and now that I have it I'm not going to be silent.",
+                "speaker_wav": SPEAKER_REFERENCE[1],
+                "language": LANGUAGE,
+                "accents": 'Canada'
+            },
+            {#3
                 "text": "This cake is great. It's so delicious and moist.",
                 "speaker_wav": SPEAKER_REFERENCE[2],
                 "language": LANGUAGE,
                 "accents": 'India'
             },
-            {
+            {#4
+                "text": "This cake is great. It's so delicious and moist.",
+                "speaker_wav": SPEAKER_REFERENCE[2],
+                "language": LANGUAGE,
+                "accents": 'Scotland'
+            },
+            {#5
+                "text": "This cake is great. It's so delicious and moist.",
+                "speaker_wav": SPEAKER_REFERENCE[2],
+                "language": LANGUAGE,
+                "accents": 'Philippines'
+            },
+            {#6
+                "text": "What is the most resilient parasite?",
+                "speaker_wav": SPEAKER_REFERENCE[3],
+                "language": LANGUAGE,
+                "accents": 'Ireland'
+            },
+            {#7
                 "text": "What is the most resilient parasite?",
                 "speaker_wav": SPEAKER_REFERENCE[3],
                 "language": LANGUAGE,
                 "accents": 'US'
             },
-            {
+            {#8
+                "text": "What is the most resilient parasite?",
+                "speaker_wav": SPEAKER_REFERENCE[3],
+                "language": LANGUAGE,
+                "accents": 'Malaysia'
+            },
+            {#9
                 "text": "Two peanuts were walking down the road. One was assaulted. Peanut.",
                 "speaker_wav": SPEAKER_REFERENCE[0],
                 "language": LANGUAGE,
                 "accents": 'India'
             },
-            {
+            {#10
                 "text": "Two peanuts were walking down the road. One was assaulted. Peanut.",
                 "speaker_wav": SPEAKER_REFERENCE[1],
                 "language": LANGUAGE,
                 "accents": 'Germany'
             },
-            {
+            {#11
+                "text": "Two peanuts were walking down the road. One was assaulted. Peanut.",
+                "speaker_wav": SPEAKER_REFERENCE[1],
+                "language": LANGUAGE,
+                "accents": 'Wales'
+            },
+            {#12
                 "text": "What is the airspeed velocity of an unladen swallow?",
                 "speaker_wav": SPEAKER_REFERENCE[2],
                 "language": LANGUAGE,
                 "accents": 'Southern Africa'
+            },
+            {#13
+                "text": "What is the airspeed velocity of an unladen swallow?",
+                "speaker_wav": SPEAKER_REFERENCE[2],
+                "language": LANGUAGE,
+                "accents": 'Australia'
+            },
+            {#14
+                "text": "What is the airspeed velocity of an unladen swallow?",
+                "speaker_wav": SPEAKER_REFERENCE[2],
+                "language": LANGUAGE,
+                "accents": 'Scotland'
             },
         ],
     )

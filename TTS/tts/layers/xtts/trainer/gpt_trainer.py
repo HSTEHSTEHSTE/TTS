@@ -416,6 +416,12 @@ class GPTTrainer(BaseTTS):
         self.resampler = torchaudio.transforms.Resample(16000, self.config.audio.sample_rate)
         self.res = faiss.StandardGpuResources()
 
+        self.pitch_augment_range = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
+        self.pitch_augments = {}
+        for pitch_augment_n_step in self.pitch_augment_range:
+            if pitch_augment_n_step != 0:
+                self.pitch_augments[pitch_augment_n_step] = torchaudio.transforms.PitchShift(self.config.audio.sample_rate, pitch_augment_n_step).to('cuda')
+
     @property
     def device(self):
         return next(self.parameters()).device
@@ -484,50 +490,72 @@ class GPTTrainer(BaseTTS):
         batch["text_inputs"] = batch["padded_text"]
         batch["cond_idxs"] = batch["cond_idxs"]
         
-        augment = random.randint(0, 1)
-        if augment == 1:
-            # perform knn-vc data augmentation
-            spk = random.choice(self.speakers)
-            recon_index = faiss.read_index(os.path.join(self.profile_dir, spk + '.index'))
-            index = [faiss.index_cpu_to_gpu(self.res, 0, recon_index)]
-            recon_index = [recon_index]
-            matching_set = [torch.load(os.path.join(self.profile_dir, spk + '.pt'))]
-            wavs = []
-            for source_wav_index in range(batch['wav'].shape[0]):
-                source_wav = batch['wav'][source_wav_index]
-                source_wav = self.sampler(source_wav)
-                # Feature Extraction
-                query_seq = self.knn_vc.get_features(source_wav)
-                # Match & Vocode
-                out_feats = self.knn_vc.match_list(
-                    query_seq, 
-                    matching_set, 
-                    index,
-                    recon_index, 
-                    topk = 4, 
-                    weights = None
-                )[0]
-                out_wav = self.resampler(self.knn_vc.vocode(out_feats.unsqueeze(0)))
-                wavs.append(out_wav)
-            conds = []
-            for source_wav_index in range(batch['conditioning'].shape[0]):
-                source_wav = batch['conditioning'][source_wav_index].squeeze(0)
-                # Feature Extraction
-                query_seq = self.knn_vc.get_features(source_wav)
-                # Match & Vocode
-                out_feats = self.knn_vc.match_list(
-                    query_seq, 
-                    matching_set, 
-                    index,
-                    recon_index, 
-                    topk = 4, 
-                    weights = None
-                )[0]
-                out_wav = self.resampler(self.knn_vc.vocode(out_feats.unsqueeze(0))).unsqueeze(0)
-                conds.append(out_wav)
+        
+        # # kNN-VC augmentation
+        # augment = random.randint(0, 1) # aug
+        # # augment = 0 # noaug
+
+        # if augment == 1:
+        #     # perform knn-vc data augmentation
+        #     spk = random.choice(self.speakers)
+        #     recon_index = faiss.read_index(os.path.join(self.profile_dir, spk + '.index'))
+        #     index = [faiss.index_cpu_to_gpu(self.res, 0, recon_index)]
+        #     recon_index = [recon_index]
+        #     matching_set = [torch.load(os.path.join(self.profile_dir, spk + '.pt'))]
+        #     wavs = []
+        #     for source_wav_index in range(batch['wav'].shape[0]):
+        #         source_wav = batch['wav'][source_wav_index]
+        #         source_wav = self.sampler(source_wav)
+        #         # Feature Extraction
+        #         query_seq = self.knn_vc.get_features(source_wav)
+        #         # Match & Vocode
+        #         out_feats = self.knn_vc.match_list(
+        #             query_seq, 
+        #             matching_set, 
+        #             index,
+        #             recon_index, 
+        #             topk = 4, 
+        #             weights = None
+        #         )[0]
+        #         out_wav = self.resampler(self.knn_vc.vocode(out_feats.unsqueeze(0)))
+        #         wavs.append(out_wav)
+        #     conds = []
+        #     for source_wav_index in range(batch['conditioning'].shape[0]):
+        #         source_wav = batch['conditioning'][source_wav_index].squeeze(0)
+        #         # Feature Extraction
+        #         query_seq = self.knn_vc.get_features(source_wav)
+        #         # Match & Vocode
+        #         out_feats = self.knn_vc.match_list(
+        #             query_seq, 
+        #             matching_set, 
+        #             index,
+        #             recon_index, 
+        #             topk = 4, 
+        #             weights = None
+        #         )[0]
+        #         out_wav = self.resampler(self.knn_vc.vocode(out_feats.unsqueeze(0))).unsqueeze(0)
+        #         conds.append(out_wav)
             
-            batch['wav'] = torch.stack(wavs, dim = 0)
-            batch['conditioning'] = torch.stack(conds, dim = 0)
+        #     batch['wav'] = torch.stack(wavs, dim = 0)
+        #     batch['conditioning'] = torch.stack(conds, dim = 0)
+
+
+        # # pitchshift augmentation
+        # pitch_augment_n_step = random.randint(self.pitch_augment_range[0], self.pitch_augment_range[-1])
+        # if pitch_augment_n_step != 0:
+        #     wavs = []
+        #     for source_wav_index in range(batch['wav'].shape[0]):
+        #         source_wav = batch['wav'][source_wav_index]
+        #         out_wav = self.pitch_augments[pitch_augment_n_step](source_wav)
+        #         wavs.append(out_wav)
+
+        #     conds = []
+        #     for source_wav_index in range(batch['conditioning'].shape[0]):
+        #         source_wav = batch['conditioning'][source_wav_index]
+        #         out_wav = self.pitch_augments[pitch_augment_n_step](source_wav)
+        #         conds.append(out_wav)
+        #     batch['wav'] = torch.stack(wavs, dim = 0)
+        #     batch['conditioning'] = torch.stack(conds, dim = 0)
 
         # compute conditioning mel specs
         # transform waves from torch.Size([B, num_cond_samples, 1, T] to torch.Size([B * num_cond_samples, 1, T] because if is faster than iterate the tensor

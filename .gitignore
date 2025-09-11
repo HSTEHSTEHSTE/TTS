@@ -175,3 +175,4 @@ tts_models/*
 *corpora
 *exp
 *tts_models
+*.wav

@@ -620,6 +620,11 @@ class VoiceBpeTokenizer:
             "Canada": "it",
             "Australia": "pt",
             "Southern Africa": "pl",
+            "Philippines": "tr",
+            "Scotland": "ar",
+            "Ireland": "cs",
+            "Malaysia": "ru",
+            "Wales": "nl",
         }
         self.accents_cipher_index = {
             "US": 0,
@@ -629,6 +634,11 @@ class VoiceBpeTokenizer:
             "Canada": 4,
             "Australia": 5,
             "Southern Africa": 6,
+            "Philippines": 7,
+            "Scotland": 8,
+            "Ireland": 9,
+            "Malaysia": 10,
+            "Wales": 11,
         }
 
     @cached_property
