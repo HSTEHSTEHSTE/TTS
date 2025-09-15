@@ -170,3 +170,9 @@ depot/*
 coqui_recipes/*
 local_scripts/*
 coqui_demos/*
+
+tts_models/*
+*corpora
+*exp
+*tts_models
+*.wav

@@ -70,8 +70,8 @@ class XTTSDataset(torch.utils.data.Dataset):
             # random.shuffle(self.samples)
             random.shuffle(self.samples)
             # order by language
-            self.samples = key_samples_by_col(self.samples, "language")
-            print(" > Sampling by language:", self.samples.keys())
+            self.samples = key_samples_by_col(self.samples, "accents")
+            print(" > Sampling by accents:", self.samples.keys())
         else:
             # for evaluation load and check samples that are corrupted to ensures the reproducibility
             self.check_eval_samples()
@@ -95,8 +95,8 @@ class XTTSDataset(torch.utils.data.Dataset):
         self.samples = new_samples
         print(" > Total eval samples after filtering:", len(self.samples))
 
-    def get_text(self, text, lang):
-        tokens = self.tokenizer.encode(text, lang)
+    def get_text(self, text, lang, accents = None):
+        tokens = self.tokenizer.encode(text, lang, accents)
         tokens = torch.IntTensor(tokens)
         assert not torch.any(tokens == 1), f"UNK token found in {text} -> {self.tokenizer.decode(tokens)}"
         # The stop token should always be sacred.
@@ -105,7 +105,7 @@ class XTTSDataset(torch.utils.data.Dataset):
 
     def load_item(self, sample):
         text = str(sample["text"])
-        tseq = self.get_text(text, sample["language"])
+        tseq = self.get_text(text, sample["language"], sample["accents"])
         audiopath = sample["audio_file"]
         wav = load_audio(audiopath, self.sample_rate)
         if text is None or len(text.strip()) == 0:
