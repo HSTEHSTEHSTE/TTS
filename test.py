@@ -6,11 +6,11 @@ from pathlib import Path
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser(description="XTTS-v2 inference arguments.")
-parser.add_argument("config", required=True, default="tts_models/multilingual/multi-dataset/XTTS-v2/config.json")
-parser.add_argument("checkpoint_dir", required=True, default="tts_models/multilingual/multi-dataset/XTTS-v2")
-parser.add_argument("out_path", required=True, default="tts_models/multilingual/multi-dataset/XTTS-v2/samples/cv_inference/eval")
-parser.add_argument("sentences_file", required=True, default="tts_models/xtts_release/multi-dataset/XTTS-v2/eval/sentences.txt")
-parser.add_argument("speakers_file", required=True, default="tts_models/xtts_release/multi-dataset/XTTS-v2/eval/speakers.txt")
+parser.add_argument("--config", required=True, default="tts_models/xtts_release/multi-dataset/XTTS-v2/config.json")
+parser.add_argument("--checkpoint_dir", required=True, default="tts_models/xtts_release/multi-dataset/XTTS-v2", help="Path to folder containing model.pth, dvae.pth, mel_stats.pth, and vocab.json.")
+parser.add_argument("--out_path", required=True, default="tts_models/xtts_release/multi-dataset/XTTS-v2/samples/cv_inference/eval")
+parser.add_argument("--sentences_file", required=True, default="tts_models/xtts_release/multi-dataset/XTTS-v2/eval/sentences.txt")
+parser.add_argument("--speakers_file", required=True, default="tts_models/xtts_release/multi-dataset/XTTS-v2/eval/speakers.txt")
 
 args = parser.parse_args()
 
