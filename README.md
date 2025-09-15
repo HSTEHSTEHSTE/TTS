@@ -1,6 +1,6 @@
 
 # Official Release for Scalable Controllabe Accented TTS
-[Paper link](https://arxiv.org/abs/2508.07426d)
+[Paper link](https://arxiv.org/abs/2508.07426)
 
 ## Environment
 pip install -r requirements.txt
