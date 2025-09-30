@@ -108,6 +108,8 @@ class GPT(nn.Module):
         label_smoothing=0.0,
         use_perceiver_resampler=False,
         perceiver_cond_length_compression=256,
+        language_cond_type='code',
+        language_cond_emb_dim=-1,
     ):
         """
         Args:
@@ -184,6 +186,10 @@ class GPT(nn.Module):
             # XTTS v1
             self.prompt_embedding = nn.Embedding(self.num_audio_tokens, model_dim)
             self.prompt_pos_embedding = LearnedPositionEmbeddings(24 * 9, model_dim)
+
+        self.language_cond_type = language_cond_type
+        if language_cond_type == 'embedding':
+            self.language_cond_emb_adapter = nn.Linear(language_cond_emb_dim, model_dim)
 
     def get_grad_norm_parameter_groups(self):
         return {
@@ -377,6 +383,7 @@ class GPT(nn.Module):
         cond_idxs=None,
         cond_lens=None,
         cond_latents=None,
+        language_cond=None,
         return_attentions=False,
         return_latent=False,
     ):
@@ -495,6 +502,8 @@ class GPT(nn.Module):
 
         # Compute text embeddings + positional embeddings
         text_emb = self.text_embedding(text_inputs) + self.text_pos_embedding(text_inputs)
+        if self.training:
+            text_emb = torch.cat([text_emb[:, :1, :], language_cond, text_emb[:, 2:, :]], dim=1)
 
         # Compute mel embeddings + positional embeddings
         mel_emb = self.mel_embedding(audio_codes) + self.mel_pos_embedding(audio_codes)
@@ -554,18 +563,21 @@ class GPT(nn.Module):
         )
         return loss_text.mean(), loss_mel.mean(), mel_logits
 
-    def inference(self, cond_latents, text_inputs, **hf_generate_kwargs):
-        self.compute_embeddings(cond_latents, text_inputs)
-        return self.generate(cond_latents, text_inputs, **hf_generate_kwargs)
+    def inference(self, cond_latents, text_inputs, language_cond_emb=None, **hf_generate_kwargs):
+        return self.generate(cond_latents, text_inputs, language_cond_emb, **hf_generate_kwargs)
 
     def compute_embeddings(
         self,
         cond_latents,
+        language_cond_emb,
         text_inputs,
     ):
         text_inputs = F.pad(text_inputs, (0, 1), value=self.stop_text_token)
         text_inputs = F.pad(text_inputs, (1, 0), value=self.start_text_token)
         emb = self.text_embedding(text_inputs) + self.text_pos_embedding(text_inputs)
+        if language_cond_emb is not None:
+            language_cond_emb = torch.load(language_cond_emb).to(emb.device)
+            emb[:, 1, :] = language_cond_emb
         emb = torch.cat([cond_latents, emb], dim=1)
         self.gpt_inference.store_prefix_emb(emb)
         gpt_inputs = torch.full(
@@ -584,9 +596,10 @@ class GPT(nn.Module):
         self,
         cond_latents,
         text_inputs,
+        language_cond_emb=None,
         **hf_generate_kwargs,
     ):
-        gpt_inputs = self.compute_embeddings(cond_latents, text_inputs)
+        gpt_inputs = self.compute_embeddings(cond_latents, language_cond_emb, text_inputs)
         gen = self.gpt_inference.generate(
             gpt_inputs,
             bos_token_id=self.start_audio_token,

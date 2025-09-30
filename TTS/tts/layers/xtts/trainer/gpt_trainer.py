@@ -218,6 +218,9 @@ class GPTTrainerConfig(XttsConfig):
     weighted_loss_attrs: dict = field(default_factory=lambda: {})
     weighted_loss_multipliers: dict = field(default_factory=lambda: {})
     test_sentences: List[dict] = field(default_factory=lambda: [])
+    augmentation_type: str = 'None' # None, pitchshift, kNN-VC
+    language_cond_type: str = 'token' # 'token', 'embedding', 'code'
+    language_cond_emb_dim: int = -1
 
 
 @dataclass
@@ -241,6 +244,8 @@ class GPTArgs(XttsArgs):
     xtts_checkpoint: str = ""
     gpt_checkpoint: str = ""  # if defined it will replace the gpt weights on xtts model
     vocoder: str = ""  # overide vocoder key on the config to avoid json write issues
+    language_cond_type = 'token' # 'token', 'embedding', 'code'
+    language_cond_path = ''
 
 
 def callback_clearml_load_save(operation_type, model_info):
@@ -384,49 +389,52 @@ class GPTTrainer(BaseTTS):
             mel_norm_file=self.args.mel_norm_file, sampling_rate=config.audio.dvae_sample_rate
         )
 
-        # Load KNN-VC Model
-        knn_vc = torch.hub.load(
-            'bshall/knn-vc',
-            'knn_vc',
-            prematched=True,
-            trust_repo=True,
-            pretrained=True,
-        )
-        knn_vc.to('cuda')
+        self.augmentation_type = self.config.augmentation_type
+        if self.augmentation_type == 'pitchshift':
+            self.pitch_augment_range = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
+            self.pitch_augments = {}
+            for pitch_augment_n_step in self.pitch_augment_range:
+                if pitch_augment_n_step != 0:
+                    self.pitch_augments[pitch_augment_n_step] = torchaudio.transforms.PitchShift(self.config.audio.sample_rate, pitch_augment_n_step).to('cuda')
+        elif self.augmentation_type == 'kNN-VC':
+            # Load KNN-VC Model
+            knn_vc = torch.hub.load(
+                'bshall/knn-vc',
+                'knn_vc',
+                prematched=True,
+                trust_repo=True,
+                pretrained=True,
+            )
+            knn_vc.to('cuda')
             
-        # Wrap the model
-        self.knn_vc = KNN_VC_Wrapper(knn_vc)
+            # Wrap the model
+            self.knn_vc = KNN_VC_Wrapper(knn_vc)
 
-        # Load Speaker Data
-        data_dir = Path('/home/hltcoe/xli/ARTS/anon_baseline/data/LibriSpeech')
-        speaker_file = data_dir / "SPEAKERS.TXT"
+            # Load Speaker Data
+            data_dir = Path('/home/hltcoe/xli/ARTS/anon_baseline/data/LibriSpeech')
+            speaker_file = data_dir / "SPEAKERS.TXT"
 
-        self.profile_dir = '/home/hltcoe/xli/ARTS/TTS/recipes/ljspeech/xtts_v2/exp/profiles'
+            self.profile_dir = '/home/hltcoe/xli/ARTS/TTS/recipes/ljspeech/xtts_v2/exp/profiles'
 
-        # Get the speakers
-        self.speakers = []
-        with open(speaker_file, 'r') as f:
-            for line in f:
-                parts = line.strip().split('|')
-                if len(parts) > 2 and parts[1] != 'SEX' and 'train' in parts[2]:
-                    spk_id, spk_set = parts[0].strip(), parts[2].strip()
-                    self.speakers.append(spk_id)
+            # Get the speakers
+            self.speakers = []
+            with open(speaker_file, 'r') as f:
+                for line in f:
+                    parts = line.strip().split('|')
+                    if len(parts) > 2 and parts[1] != 'SEX' and 'train' in parts[2]:
+                        spk_id, spk_set = parts[0].strip(), parts[2].strip()
+                        self.speakers.append(spk_id)
 
-        self.sampler = torchaudio.transforms.Resample(self.config.audio.sample_rate, 16000)
-        self.resampler = torchaudio.transforms.Resample(16000, self.config.audio.sample_rate)
-        self.res = faiss.StandardGpuResources()
-
-        self.pitch_augment_range = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
-        self.pitch_augments = {}
-        for pitch_augment_n_step in self.pitch_augment_range:
-            if pitch_augment_n_step != 0:
-                self.pitch_augments[pitch_augment_n_step] = torchaudio.transforms.PitchShift(self.config.audio.sample_rate, pitch_augment_n_step).to('cuda')
+            self.sampler = torchaudio.transforms.Resample(self.config.audio.sample_rate, 16000)
+            self.resampler = torchaudio.transforms.Resample(16000, self.config.audio.sample_rate)
+            self.res = faiss.StandardGpuResources()
+        
 
     @property
     def device(self):
         return next(self.parameters()).device
 
-    def forward(self, text_inputs, text_lengths, audio_codes, wav_lengths, cond_mels, cond_idxs, cond_lens):
+    def forward(self, text_inputs, text_lengths, audio_codes, wav_lengths, cond_mels, cond_idxs, cond_lens, language_cond):
         """
         Forward pass that uses both text and voice in either text conditioning mode or voice conditioning mode
         (actuated by `text_first`).
@@ -447,6 +455,7 @@ class GPTTrainer(BaseTTS):
             cond_mels=cond_mels,
             cond_idxs=cond_idxs,
             cond_lens=cond_lens,
+            language_cond=language_cond,
         )
         return losses
 
@@ -466,6 +475,7 @@ class GPTTrainer(BaseTTS):
                     s_info["language"],
                     accents=s_info["accents"],
                     gpt_cond_len=3,
+                    language_cond_emb=s_info["language_cond_emb"],
                 )["wav"]
                 test_audios["{}-audio".format(idx)] = wav
 
@@ -490,72 +500,71 @@ class GPTTrainer(BaseTTS):
         batch["text_inputs"] = batch["padded_text"]
         batch["cond_idxs"] = batch["cond_idxs"]
         
-        
-        # # kNN-VC augmentation
-        # augment = random.randint(0, 1) # aug
-        # # augment = 0 # noaug
+        if self.augmentation_type == 'pitchshift':
+            # pitchshift augmentation
+            pitch_augment_n_step = random.randint(self.pitch_augment_range[0], self.pitch_augment_range[-1])
+            if pitch_augment_n_step != 0:
+                wavs = []
+                for source_wav_index in range(batch['wav'].shape[0]):
+                    source_wav = batch['wav'][source_wav_index]
+                    out_wav = self.pitch_augments[pitch_augment_n_step](source_wav)
+                    wavs.append(out_wav)
 
-        # if augment == 1:
-        #     # perform knn-vc data augmentation
-        #     spk = random.choice(self.speakers)
-        #     recon_index = faiss.read_index(os.path.join(self.profile_dir, spk + '.index'))
-        #     index = [faiss.index_cpu_to_gpu(self.res, 0, recon_index)]
-        #     recon_index = [recon_index]
-        #     matching_set = [torch.load(os.path.join(self.profile_dir, spk + '.pt'))]
-        #     wavs = []
-        #     for source_wav_index in range(batch['wav'].shape[0]):
-        #         source_wav = batch['wav'][source_wav_index]
-        #         source_wav = self.sampler(source_wav)
-        #         # Feature Extraction
-        #         query_seq = self.knn_vc.get_features(source_wav)
-        #         # Match & Vocode
-        #         out_feats = self.knn_vc.match_list(
-        #             query_seq, 
-        #             matching_set, 
-        #             index,
-        #             recon_index, 
-        #             topk = 4, 
-        #             weights = None
-        #         )[0]
-        #         out_wav = self.resampler(self.knn_vc.vocode(out_feats.unsqueeze(0)))
-        #         wavs.append(out_wav)
-        #     conds = []
-        #     for source_wav_index in range(batch['conditioning'].shape[0]):
-        #         source_wav = batch['conditioning'][source_wav_index].squeeze(0)
-        #         # Feature Extraction
-        #         query_seq = self.knn_vc.get_features(source_wav)
-        #         # Match & Vocode
-        #         out_feats = self.knn_vc.match_list(
-        #             query_seq, 
-        #             matching_set, 
-        #             index,
-        #             recon_index, 
-        #             topk = 4, 
-        #             weights = None
-        #         )[0]
-        #         out_wav = self.resampler(self.knn_vc.vocode(out_feats.unsqueeze(0))).unsqueeze(0)
-        #         conds.append(out_wav)
-            
-        #     batch['wav'] = torch.stack(wavs, dim = 0)
-        #     batch['conditioning'] = torch.stack(conds, dim = 0)
+                conds = []
+                for source_wav_index in range(batch['conditioning'].shape[0]):
+                    source_wav = batch['conditioning'][source_wav_index]
+                    out_wav = self.pitch_augments[pitch_augment_n_step](source_wav)
+                    conds.append(out_wav)
+                batch['wav'] = torch.stack(wavs, dim = 0)
+                batch['conditioning'] = torch.stack(conds, dim = 0)
+        elif self.augmentation_type == 'kNN-VC':
+            # kNN-VC augmentation
+            augment = random.randint(0, 1) # aug
+            # augment = 0 # noaug
 
-
-        # # pitchshift augmentation
-        # pitch_augment_n_step = random.randint(self.pitch_augment_range[0], self.pitch_augment_range[-1])
-        # if pitch_augment_n_step != 0:
-        #     wavs = []
-        #     for source_wav_index in range(batch['wav'].shape[0]):
-        #         source_wav = batch['wav'][source_wav_index]
-        #         out_wav = self.pitch_augments[pitch_augment_n_step](source_wav)
-        #         wavs.append(out_wav)
-
-        #     conds = []
-        #     for source_wav_index in range(batch['conditioning'].shape[0]):
-        #         source_wav = batch['conditioning'][source_wav_index]
-        #         out_wav = self.pitch_augments[pitch_augment_n_step](source_wav)
-        #         conds.append(out_wav)
-        #     batch['wav'] = torch.stack(wavs, dim = 0)
-        #     batch['conditioning'] = torch.stack(conds, dim = 0)
+            if augment == 1:
+                # perform knn-vc data augmentation
+                spk = random.choice(self.speakers)
+                recon_index = faiss.read_index(os.path.join(self.profile_dir, spk + '.index'))
+                index = [faiss.index_cpu_to_gpu(self.res, 0, recon_index)]
+                recon_index = [recon_index]
+                matching_set = [torch.load(os.path.join(self.profile_dir, spk + '.pt'))]
+                wavs = []
+                for source_wav_index in range(batch['wav'].shape[0]):
+                    source_wav = batch['wav'][source_wav_index]
+                    source_wav = self.sampler(source_wav)
+                    # Feature Extraction
+                    query_seq = self.knn_vc.get_features(source_wav)
+                    # Match & Vocode
+                    out_feats = self.knn_vc.match_list(
+                        query_seq, 
+                        matching_set, 
+                        index,
+                        recon_index, 
+                        topk = 4, 
+                        weights = None
+                    )[0]
+                    out_wav = self.resampler(self.knn_vc.vocode(out_feats.unsqueeze(0)))
+                    wavs.append(out_wav)
+                conds = []
+                for source_wav_index in range(batch['conditioning'].shape[0]):
+                    source_wav = batch['conditioning'][source_wav_index].squeeze(0)
+                    # Feature Extraction
+                    query_seq = self.knn_vc.get_features(source_wav)
+                    # Match & Vocode
+                    out_feats = self.knn_vc.match_list(
+                        query_seq, 
+                        matching_set, 
+                        index,
+                        recon_index, 
+                        topk = 4, 
+                        weights = None
+                    )[0]
+                    out_wav = self.resampler(self.knn_vc.vocode(out_feats.unsqueeze(0))).unsqueeze(0)
+                    conds.append(out_wav)
+                
+                batch['wav'] = torch.stack(wavs, dim = 0)
+                batch['conditioning'] = torch.stack(conds, dim = 0)
 
         # compute conditioning mel specs
         # transform waves from torch.Size([B, num_cond_samples, 1, T] to torch.Size([B * num_cond_samples, 1, T] because if is faster than iterate the tensor
@@ -600,9 +609,10 @@ class GPTTrainer(BaseTTS):
         wav_lengths = batch["wav_lengths"]
         cond_idxs = batch["cond_idxs"]
         cond_lens = batch["cond_lens"]
+        language_cond = batch["language_cond"]
 
         loss_text, loss_mel, _ = self.forward(
-            text_inputs, text_lengths, audio_codes, wav_lengths, cond_mels, cond_idxs, cond_lens
+            text_inputs, text_lengths, audio_codes, wav_lengths, cond_mels, cond_idxs, cond_lens, language_cond
         )
         loss_dict["loss_text_ce"] = loss_text * self.args.gpt_loss_text_ce_weight
         loss_dict["loss_mel_ce"] = loss_mel * self.args.gpt_loss_mel_ce_weight

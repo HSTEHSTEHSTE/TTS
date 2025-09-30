@@ -655,7 +655,7 @@ class VoiceBpeTokenizer:
                 f"[!] Warning: The text length exceeds the character limit of {limit} for language '{lang}', this might cause truncated audio."
             )
 
-    def preprocess_text(self, txt, lang, accents = None):
+    def preprocess_text(self, txt, lang):
         if lang in {"ar", "cs", "de", "en", "es", "fr", "hu", "it", "nl", "pl", "pt", "ru", "tr", "zh", "ko"}:
             txt = multilingual_cleaners(txt, lang)
             if lang == "zh":
@@ -675,9 +675,7 @@ class VoiceBpeTokenizer:
         lang = lang.split("-")[0]  # remove the region
         self.check_input_length(txt, 'en')
         # self.check_input_length(txt, lang)
-        txt = self.preprocess_text(txt, 'en', accents)
-        # print(lang, txt)
-        # txt = self.preprocess_text(txt, lang)
+        txt = self.preprocess_text(txt, 'en')
         lang = "zh-cn" if lang == "zh" else lang
         if not accents is None:
             accents = "zh-cn" if lang == "zh" else accents

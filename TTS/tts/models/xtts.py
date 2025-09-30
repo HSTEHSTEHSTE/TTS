@@ -379,7 +379,7 @@ class Xtts(BaseTTS):
 
         return gpt_cond_latents, speaker_embedding
 
-    def synthesize(self, text, config, speaker_wav, language, accents=None, speaker_id=None, **kwargs):
+    def synthesize(self, text, config, speaker_wav, language, accents=None, speaker_id=None, language_cond_emb=None, **kwargs):
         """Synthesize speech with the given input text.
 
         Args:
@@ -409,14 +409,14 @@ class Xtts(BaseTTS):
         settings.update(kwargs)  # allow overriding of preset settings with kwargs
         if speaker_id is not None:
             gpt_cond_latent, speaker_embedding = self.speaker_manager.speakers[speaker_id].values()
-            return self.inference(text, language, gpt_cond_latent, speaker_embedding, accents = accents, **settings)
+            return self.inference(text, language, gpt_cond_latent, speaker_embedding, accents=accents, language_cond_emb=language_cond_emb, **settings)
         settings.update({
             "gpt_cond_len": config.gpt_cond_len,
             "gpt_cond_chunk_len": config.gpt_cond_chunk_len,
             "max_ref_len": config.max_ref_len,
             "sound_norm_refs": config.sound_norm_refs,
         })
-        return self.full_inference(text, speaker_wav, language, accents = accents, **settings)
+        return self.full_inference(text, speaker_wav, language, accents=accents, language_cond_emb=language_cond_emb, **settings)
 
     @torch.inference_mode()
     def full_inference(
@@ -437,6 +437,7 @@ class Xtts(BaseTTS):
         gpt_cond_chunk_len=6,
         max_ref_len=10,
         sound_norm_refs=False,
+        language_cond_emb=None,
         **hf_generate_kwargs,
     ):
         """
@@ -498,6 +499,7 @@ class Xtts(BaseTTS):
             top_k=top_k,
             top_p=top_p,
             do_sample=do_sample,
+            language_cond_emb=language_cond_emb,
             **hf_generate_kwargs,
         )
 
@@ -519,6 +521,7 @@ class Xtts(BaseTTS):
         num_beams=1,
         speed=1.0,
         enable_text_splitting=False,
+        language_cond_emb=None,
         **hf_generate_kwargs,
     ):
         language = language.split("-")[0]  # remove the country code
@@ -554,6 +557,7 @@ class Xtts(BaseTTS):
                     length_penalty=length_penalty,
                     repetition_penalty=repetition_penalty,
                     output_attentions=False,
+                    language_cond_emb=language_cond_emb,
                     **hf_generate_kwargs,
                 )
                 expected_output_len = torch.tensor(
