@@ -62,6 +62,8 @@ class XTTSDataset(torch.utils.data.Dataset):
         self.max_wav_len = model_args.max_wav_length
         self.max_text_len = model_args.max_text_length
         self.use_masking_gt_prompt_approach = model_args.gpt_use_masking_gt_prompt_approach
+        self.language_cond_type = model_args.language_cond_type
+        self.language_cond_path = model_args.language_cond_path
         assert self.max_wav_len is not None and self.max_text_len is not None
 
         self.samples = samples
@@ -70,8 +72,8 @@ class XTTSDataset(torch.utils.data.Dataset):
             # random.shuffle(self.samples)
             random.shuffle(self.samples)
             # order by language
-            self.samples = key_samples_by_col(self.samples, "language")
-            print(" > Sampling by language:", self.samples.keys())
+            self.samples = key_samples_by_col(self.samples, "accents")
+            print(" > Sampling by accents:", self.samples.keys())
         else:
             # for evaluation load and check samples that are corrupted to ensures the reproducibility
             self.check_eval_samples()
@@ -81,7 +83,7 @@ class XTTSDataset(torch.utils.data.Dataset):
         new_samples = []
         for sample in self.samples:
             try:
-                tseq, _, wav, _, _, _ = self.load_item(sample)
+                tseq, _, wav, _, _, _, _ = self.load_item(sample)
             except:
                 continue
             # Basically, this audio file is nonexistent or too long to be supported by the dataset.
@@ -95,8 +97,8 @@ class XTTSDataset(torch.utils.data.Dataset):
         self.samples = new_samples
         print(" > Total eval samples after filtering:", len(self.samples))
 
-    def get_text(self, text, lang):
-        tokens = self.tokenizer.encode(text, lang)
+    def get_text(self, text, lang, accents = None):
+        tokens = self.tokenizer.encode(text, lang, accents)
         tokens = torch.IntTensor(tokens)
         assert not torch.any(tokens == 1), f"UNK token found in {text} -> {self.tokenizer.decode(tokens)}"
         # The stop token should always be sacred.
@@ -105,9 +107,15 @@ class XTTSDataset(torch.utils.data.Dataset):
 
     def load_item(self, sample):
         text = str(sample["text"])
-        tseq = self.get_text(text, sample["language"])
+        tseq = self.get_text(text, sample["language"], sample["accents"])
         audiopath = sample["audio_file"]
         wav = load_audio(audiopath, self.sample_rate)
+        if self.language_cond_type == 'embedding':
+            audio_file_name = audiopath.split('/')[-1][:-4]
+            language_cond_emb_path = os.path.join(self.language_cond_path, audio_file_name + '.pt')
+            language_cond = torch.load(language_cond_emb_path)
+        else:
+            language_cond = None
         if text is None or len(text.strip()) == 0:
             raise ValueError
         if wav is None or wav.shape[-1] < (0.5 * self.sample_rate):
@@ -133,7 +141,7 @@ class XTTSDataset(torch.utils.data.Dataset):
             # if do not use masking use cond_len
             cond_idxs = torch.nan
 
-        return tseq, audiopath, wav, cond, cond_len, cond_idxs
+        return tseq, audiopath, wav, cond, cond_len, cond_idxs, language_cond
 
     def __getitem__(self, index):
         if self.is_eval:
@@ -157,7 +165,7 @@ class XTTSDataset(torch.utils.data.Dataset):
 
         # try to load the sample, if fails added it to the failed samples list
         try:
-            tseq, audiopath, wav, cond, cond_len, cond_idxs = self.load_item(sample)
+            tseq, audiopath, wav, cond, cond_len, cond_idxs, language_cond = self.load_item(sample)
         except:
             if self.debug_failures:
                 print(f"error loading {sample['audio_file']} {sys.exc_info()}")
@@ -180,7 +188,6 @@ class XTTSDataset(torch.utils.data.Dataset):
             return self[1]
 
         res = {
-            # 'real_text': text,
             "text": tseq,
             "text_lengths": torch.tensor(tseq.shape[0], dtype=torch.long),
             "wav": wav,
@@ -191,6 +198,7 @@ class XTTSDataset(torch.utils.data.Dataset):
             if cond_len is not torch.nan
             else torch.tensor([cond_len]),
             "cond_idxs": torch.tensor(cond_idxs) if cond_idxs is not torch.nan else torch.tensor([cond_idxs]),
+            "language_cond": None if language_cond is None else language_cond.unsqueeze(0),
         }
         return res
 
@@ -211,6 +219,10 @@ class XTTSDataset(torch.utils.data.Dataset):
         batch["conditioning"] = torch.stack(batch["conditioning"])
         batch["cond_lens"] = torch.stack(batch["cond_lens"])
         batch["cond_idxs"] = torch.stack(batch["cond_idxs"])
+        if batch["language_cond"][0] is None:
+            batch["language_cond"] = None
+        else:
+            batch["language_cond"] = torch.stack(batch["language_cond"])
 
         if torch.any(batch["cond_idxs"].isnan()):
             batch["cond_idxs"] = None

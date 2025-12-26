@@ -612,6 +612,34 @@ class VoiceBpeTokenizer:
             "hu": 224,
             "ko": 95,
         }
+        self.accents_to_langcode = {
+            "US": "en",
+            "England": "es",
+            "India": "fr",
+            "Germany": "de",
+            "Canada": "it",
+            "Australia": "pt",
+            "Southern Africa": "pl",
+            "Philippines": "tr",
+            "Scotland": "ar",
+            "Ireland": "cs",
+            "Malaysia": "ru",
+            "Wales": "nl",
+        }
+        self.accents_cipher_index = {
+            "US": 0,
+            "England": 1,
+            "India": 2,
+            "Germany": 3,
+            "Canada": 4,
+            "Australia": 5,
+            "Southern Africa": 6,
+            "Philippines": 7,
+            "Scotland": 8,
+            "Ireland": 9,
+            "Malaysia": 10,
+            "Wales": 11,
+        }
 
     @cached_property
     def katsu(self):
@@ -643,14 +671,20 @@ class VoiceBpeTokenizer:
             raise NotImplementedError(f"Language '{lang}' is not supported.")
         return txt
 
-    def encode(self, txt, lang):
+    def encode(self, txt, lang, accents = None):
         lang = lang.split("-")[0]  # remove the region
-        self.check_input_length(txt, lang)
-        txt = self.preprocess_text(txt, lang)
+        self.check_input_length(txt, 'en')
+        # self.check_input_length(txt, lang)
+        txt = self.preprocess_text(txt, 'en')
         lang = "zh-cn" if lang == "zh" else lang
-        txt = f"[{lang}]{txt}"
+        if not accents is None:
+            accents = "zh-cn" if lang == "zh" else accents
+            txt = '[' + self.accents_to_langcode[accents] + '] ' + txt
+        else:
+            txt = f"[{lang}]{txt}"
         txt = txt.replace(" ", "[SPACE]")
-        return self.tokenizer.encode(txt).ids
+        out = self.tokenizer.encode(txt)
+        return out.ids
 
     def decode(self, seq):
         if isinstance(seq, torch.Tensor):

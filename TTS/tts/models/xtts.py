@@ -379,7 +379,7 @@ class Xtts(BaseTTS):
 
         return gpt_cond_latents, speaker_embedding
 
-    def synthesize(self, text, config, speaker_wav, language, speaker_id=None, **kwargs):
+    def synthesize(self, text, config, speaker_wav, language, accents=None, speaker_id=None, language_cond_emb=None, **kwargs):
         """Synthesize speech with the given input text.
 
         Args:
@@ -409,14 +409,14 @@ class Xtts(BaseTTS):
         settings.update(kwargs)  # allow overriding of preset settings with kwargs
         if speaker_id is not None:
             gpt_cond_latent, speaker_embedding = self.speaker_manager.speakers[speaker_id].values()
-            return self.inference(text, language, gpt_cond_latent, speaker_embedding, **settings)
+            return self.inference(text, language, gpt_cond_latent, speaker_embedding, accents=accents, language_cond_emb=language_cond_emb, **settings)
         settings.update({
             "gpt_cond_len": config.gpt_cond_len,
             "gpt_cond_chunk_len": config.gpt_cond_chunk_len,
             "max_ref_len": config.max_ref_len,
             "sound_norm_refs": config.sound_norm_refs,
         })
-        return self.full_inference(text, speaker_wav, language, **settings)
+        return self.full_inference(text, speaker_wav, language, accents=accents, language_cond_emb=language_cond_emb, **settings)
 
     @torch.inference_mode()
     def full_inference(
@@ -424,6 +424,7 @@ class Xtts(BaseTTS):
         text,
         ref_audio_path,
         language,
+        accents=None,
         # GPT inference
         temperature=0.75,
         length_penalty=1.0,
@@ -436,6 +437,7 @@ class Xtts(BaseTTS):
         gpt_cond_chunk_len=6,
         max_ref_len=10,
         sound_norm_refs=False,
+        language_cond_emb=None,
         **hf_generate_kwargs,
     ):
         """
@@ -490,12 +492,14 @@ class Xtts(BaseTTS):
             language,
             gpt_cond_latent,
             speaker_embedding,
+            accents=accents,
             temperature=temperature,
             length_penalty=length_penalty,
             repetition_penalty=repetition_penalty,
             top_k=top_k,
             top_p=top_p,
             do_sample=do_sample,
+            language_cond_emb=language_cond_emb,
             **hf_generate_kwargs,
         )
 
@@ -506,6 +510,7 @@ class Xtts(BaseTTS):
         language,
         gpt_cond_latent,
         speaker_embedding,
+        accents=None,
         # GPT inference
         temperature=0.75,
         length_penalty=1.0,
@@ -516,6 +521,7 @@ class Xtts(BaseTTS):
         num_beams=1,
         speed=1.0,
         enable_text_splitting=False,
+        language_cond_emb=None,
         **hf_generate_kwargs,
     ):
         language = language.split("-")[0]  # remove the country code
@@ -531,7 +537,7 @@ class Xtts(BaseTTS):
         gpt_latents_list = []
         for sent in text:
             sent = sent.strip().lower()
-            text_tokens = torch.IntTensor(self.tokenizer.encode(sent, lang=language)).unsqueeze(0).to(self.device)
+            text_tokens = torch.IntTensor(self.tokenizer.encode(sent, lang=language, accents=accents)).unsqueeze(0).to(self.device)
 
             assert (
                 text_tokens.shape[-1] < self.args.gpt_max_text_tokens
@@ -551,6 +557,7 @@ class Xtts(BaseTTS):
                     length_penalty=length_penalty,
                     repetition_penalty=repetition_penalty,
                     output_attentions=False,
+                    language_cond_emb=language_cond_emb,
                     **hf_generate_kwargs,
                 )
                 expected_output_len = torch.tensor(
@@ -580,6 +587,7 @@ class Xtts(BaseTTS):
             "wav": torch.cat(wavs, dim=0).numpy(),
             "gpt_latents": torch.cat(gpt_latents_list, dim=1).numpy(),
             "speaker_embedding": speaker_embedding,
+            "gpt_tokens": gpt_codes
         }
 
     def handle_chunks(self, wav_gen, wav_gen_prev, wav_overlap, overlap_len):
@@ -778,7 +786,7 @@ class Xtts(BaseTTS):
         except:
             if eval:
                 self.gpt.init_gpt_for_inference(kv_cache=self.args.kv_cache)
-            self.load_state_dict(checkpoint, strict=strict)
+            self.load_state_dict(checkpoint, strict=False)
 
         if eval:
             self.hifigan_decoder.eval()
